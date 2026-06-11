@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SentiGrade</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600&display=swap');
+        
+        :root {
+            --primary-color: #0071e3;
+            --secondary-color: #f5f5f7;
+            --text-color: #1d1d1f;
+            --sidebar-color: rgba(255, 255, 255, 0.8);
+            --hover-color: rgba(0, 0, 0, 0.05);
+            --transition-speed: 0.5s;
+            --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        } 
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        body {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            overflow-x: hidden;
+        }
+        
+        .main-container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            background-color: var(--sidebar-color);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
+            padding: 40px 0;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 1000;
+            transition: transform var(--transition-speed) ease;
+        }
+        
+        .sidebar-brand {
+            text-align: center;
+            padding: 0 20px 30px;
+            font-weight: 500;
+            letter-spacing: -0.5px;
+            font-size: 1.2rem;
+            color: var(--text-color);
+            opacity: 0.9;
+        }
+        
+        .sidebar-nav {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .nav-item {
+            margin: 8px 16px;
+        }
+        
+        .nav-link {
+            display: block;
+            padding: 12px 16px;
+            color: var(--text-color);
+            text-decoration: none;
+            border-radius: 10px;
+            transition: all 0.3s;
+            font-weight: 400;
+            font-size: 0.95rem;
+        }
+        
+        .nav-link:hover, .nav-link.active {
+            background-color: var(--hover-color);
+            transform: translateX(5px);
+        }
+        
+        .subsection {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        
+        .subsection.open {
+            max-height: 500px;
+        }
+        
+        .subsection .nav-link {
+            padding-left: 32px;
+            font-size: 0.9rem;
+        }
+        
+        .content {
+            flex: 1;
+            margin-left: 250px;
+            padding: 40px;
+            transition: opacity 0.4s ease-out;
+        }
+
+
+        /* Card body adjustments */
+        .card-body {
+            position: relative;
+            padding: 20px;
+            overflow: visible;
+        }
+        
+
+        /* Fix for gauge container display issues */
+        .gauge-container {
+            min-height: 300px !important;
+            height: 300px !important;
+            width: 100% !important;
+            position: relative !important;
+            display: block !important;
+            visibility: visible !important;
+            overflow: visible !important;
+            margin: 0 auto;
+        }
+
+        /* Ensure both gauge containers show content */
+        #company-sentiment-section .gauge-container,
+        #news-sentiment-section .gauge-container {
+            overflow: visible;
+            height: 300px;
+        }
+
+        .section {
+            opacity: 0;
+            display: none;
+            transform: translateY(20px);
+            transition: all 0.4s ease-out;
+            margin-bottom: 30px;
+        }
+        
+        /* Ensure Plotly elements are visible */
+        .js-plotly-plot, 
+        .plot-container, 
+        .plotly-graph-div {
+            height: 100% !important;
+            width: 100% !important;
+            min-height: 300px !important;
+            position: relative !important;
+            display: block !important;
+            visibility: visible !important;
+        }
+          
+        /* Force display for plotly container */
+        [id^="plotly"], [class*="plotly"] {
+        display: block !important;
+        visibility: visible !important;
+        }
+
+
+        /* Force SVG elements to appear at proper size */
+        .main-svg {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            height: 100% !important;
+            width: 100% !important;
+            overflow: visible !important;
+        }
+          
+
+        /* Fix for section visibility */
+        .section.active {
+            opacity: 1;
+            display: block !important;
+            transform: translateY(0);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.5px;
+            color: var(--text-color);
+        }
+        
+        .section-subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            font-weight: 400;
+            color: rgba(0, 0, 0, 0.6);
+        }
+        
+        /* Card container for the sentiment gauge */
+        .sentiment-gauge-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* Align items at the start (top) */
+            align-items: center; /* Center horizontally */
+            padding: 20px; /* Padding inside the card */
+            box-sizing: border-box; /* Make sure padding doesn't affect overall height */
+            height: auto; /* Card height adjusts based on the gauge */
+            width: 100%; /* Ensure the card takes up full available width */
+        }
+
+        /* Sentiment Gauge Styling */
+        .sentiment-gauge {
+            width: 100%; /* Full width of the card */
+            height: 250px; /* Set the height of the sentiment gauge */
+            max-width: 100%; /* Ensure the gauge fills the card width */
+        }
+
+        /* General card styling for the sentiment section */
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: none;
+            padding: 20px; /* Padding inside the card */
+            margin-bottom: 30px; /* Space between cards */
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column; /* Stack content vertically */
+            justify-content: flex-start; /* Align items from the top */
+        }
+
+
+        /* Optional: Adjust gauge title if needed */
+        .sentiment-gauge-title {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            color: #333;
+            text-align: center;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        }
+        
+        .form-control {
+            border-radius: 10px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            padding: 12px 16px;
+            font-size: 1rem;
+            transition: all 0.3s;
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .form-control:focus {
+            box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.2);
+            border-color: var(--primary-color);
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 10px;
+            padding: 10px 24px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0062c3;
+            transform: translateY(-2px);
+        }
+        
+        .chart-container {
+            width: 100%;
+            margin-top: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+        }
+        
+        .chart-container iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+        
+        .chart-container iframe.loaded {
+            opacity: 1;
+        }
+
+        /* Add this to your existing CSS styles */
+        .news-content {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .news-content p {
+            margin-bottom: 10px;
+        }
+        
+        .result-container {
+            animation: fadeIn 0.8s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .card-title {
+            font-size: 1.4rem;
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+            color: var(--text-color);
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .content {
+                margin-left: 0;
+            }
+            
+            .menu-toggle {
+                display: block;
+                position: fixed;
+                top: 20px;
+                left: 20px;
+                z-index: 1001;
+                background-color: white;
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                cursor: pointer;
+            }
+        }
+    </style>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+</head>
+
+<body>
+    <!-- Mobile menu toggle -->
+    <div class="menu-toggle d-md-none" onclick="toggleSidebar()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    </div>
+    
+    <div class="main-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-brand">
+                SentiGrade Project
+            </div>
+            <ul class="sidebar-nav">
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-section="home-section" onclick="showSection('home-section')">Home</a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-section="company-news-section" onclick="showSection('company-news-section')">Company News</a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-section="stock-chart-section" onclick="showSection('stock-chart-section')">Stock Chart</a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="toggleSubsections('sentiment-subsections')">Sentiment Analysis</a>
+                    <div id="sentiment-subsections" class="subsection">
+                        <a href="#" class="nav-link" data-section="company-sentiment-section" onclick="showSection('company-sentiment-section')">Company</a>
+                        <a href="#" class="nav-link" data-section="news-sentiment-section" onclick="showSection('news-sentiment-section')">News</a>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-section="newsletter-section" onclick="showSection('newsletter-section')">Newsletter</a>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Main Content Area -->
+        <div class="content">
+            <!-- Home Section -->
+            <div id="home-section" class="section">
+                <h1 class="section-title">ValueAdd Senti Analysis</h1>
+                <p class="section-subtitle">Home Page is coming soon.</p>
+            </div>
+
+            <!-- Company News Section -->
+            <div id="company-news-section" class="section">
+                <h1 class="section-title">Company News</h1>
+                <p class="section-subtitle">Review the latest news for a specific company.</p>
+                
+                <div id="news-error-container">
+                    {% if error %}
+                        <div class="alert alert-danger" role="alert">
+                            {{ error }}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="card p-3 mb-4">
+                    <form id="news-form" method="post" action="{{ url_for('recent_news') }}">
+                        <div class="mb-3">
+                            <label for="ticker" class="form-label">Ticker Symbol</label>
+                            <input type="text" id="ticker" name="ticker" class="form-control" placeholder="Enter a ticker symbol (e.g., AAPL)" required>
+                        </div>
+                        <div class="mb-3 d-flex">
+                            <div class="me-2 flex-grow-1">
+                                <label for="start_date" class="form-label">Start Date</label>
+                                <input type="date" id="start_date" name="start_date" class="form-control" required>
+                            </div>
+                            <div class="flex-grow-1">
+                                <label for="end_date" class="form-label">End Date</label>
+                                <input type="date" id="end_date" name="end_date" class="form-control" required>
+                            </div>
+                        </div>
+
+                        <!-- Date Range Buttons -->
+                        <div class="mb-3 d-flex gap-2">
+                            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('1m')">Last 1 Month</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('3m')">Last 3 Months</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('6m')">Last 6 Months</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('1y')">Last 1 Year</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('ytd')">Year to Date (YTD)</button>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Get News</button>
+                    </form>
+                </div>
+
+                <div id="news-results-container">
+                    {% if recent_news %}
+                        <div class="container mt-4">
+                            <h2>Recent News for {{ ticker }}</h2>
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>News</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in recent_news %}
+                                        <tr>
+                                            <td>{{ item['Date'].strftime('%Y-%m-%d') }}</td>
+                                            <td>
+                                                {% if item['LINK'] %}
+                                                    <a href="{{ item['LINK'] }}" target="_blank">{{ item['NEWS'] }}</a>
+                                                {% else %}
+                                                    {{ item['NEWS'] }}
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Stock Chart Analysis Section -->
+            <div id="stock-chart-section" class="section">
+                <h1 class="section-title">Stock Chart Analysis</h1>
+                <p class="section-subtitle">Interactive stock chart with integrated news headlines.</p>
+                
+                <div class="card">
+                    <form id="stock-chart-form" onsubmit="return generateStockChart(event)">
+                        <div class="mb-3">
+                            <label for="chart-ticker" class="form-label">Ticker Symbol</label>
+                            <input type="text" id="chart-ticker" name="ticker" class="form-control" placeholder="Enter a ticker symbol (e.g., AAPL)" required>
+                        </div>
+                        <div class="mb-3 d-flex">
+                            <div class="me-2 flex-grow-1">
+                                <label for="date_from" class="form-label">Start Date</label>
+                                <input type="date" id="date_from" name="date_from" class="form-control" required>
+                            </div>
+                            <div class="flex-grow-1">
+                                <label for="date_to" class="form-label">End Date</label>
+                                <input type="date" id="date_to" name="date_to" class="form-control" required>
+                            </div>
+                        </div>
+
+                        <!-- Date Range Buttons -->
+                        <div class="mb-3 d-flex gap-2">
+                            <button type="button" class="btn btn-outline-secondary" onclick="setStockChartDateRange('1m')">Last 1 Month</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setStockChartDateRange('3m')">Last 3 Months</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setStockChartDateRange('6m')">Last 6 Months</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setStockChartDateRange('1y')">Last 1 Year</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="setStockChartDateRange('ytd')">Year to Date (YTD)</button>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Generate Chart</button>
+                    </form>
+            
+                    <div id="chart-container" class="mt-4" style="min-height: 100px;">
+                        <!-- Chart will be loaded here -->
+                        {% if chart_filename %}
+                            <div class="card mt-4 p-3">
+                                <h5>Stock Chart</h5>
+                                <iframe src="{{ url_for('static', filename=chart_filename) }}"></iframe>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Company Sentiment Analysis Section -->
+            <div id="company-sentiment-section" class="section">
+                <h1 class="section-title">Company Sentiment Analysis</h1>
+                <p class="section-subtitle">Analyze news sentiment for a specific company.</p>
+                
+                <div class="card">
+                    <form method="post" action="{{ url_for('home') }}">
+                        <div class="mb-3">
+                            <label for="sentiment-ticker" class="form-label">Ticker Symbol</label>
+                            <input type="text" id="sentiment-ticker" name="ticker" class="form-control" placeholder="Enter a ticker symbol (e.g., AAPL)" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Analyze Sentiment</button>
+                    </form>
+                </div>
+                
+                {% if ticker %}
+                <div class="result-container mt-4">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <h2 class="card-title">Sentiment Gauge for {{ ticker|upper }}</h2>
+                                <div id="gauge-container-wrapper" style="padding:10px;">
+                                    {% if gauge_html %}
+                                        {{ gauge_html|safe }}
+                                    {% else %}
+                                        <div style="color:red; text-align:center; padding:20px;">
+                                            No gauge HTML was generated
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <h2 class="card-title">Word Cloud for {{ ticker|upper }}</h2>
+                                {% if wordcloud_base64 %}
+                                <img src="data:image/png;base64,{{ wordcloud_base64 }}" class="img-fluid" alt="Word Cloud">
+                                {% else %}
+                                <p>No word cloud available for this ticker.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- News Section -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <h2 class="card-title">Recent News for {{ ticker|upper }}</h2>
+                                {% if news_headline and news_link %}
+                                    <div class="card-body">
+                                        <a href="{{ news_link }}" target="_blank" rel="noopener noreferrer">{{ news_headline }}</a>
+                                    </div>
+                                {% else %}
+                                    <div class="card-body">
+                                        <p class="card-text">No recent news available for this ticker.</p>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- News Sentiment Analysis Section -->
+            <div id="news-sentiment-section" class="section">
+                <h1 class="section-title">News Sentiment Analysis</h1>
+                <p class="section-subtitle">View latest news and sentiment for a specific company.</p>
+                
+                <!-- News Extraction Form -->
+                <div class="card">
+                    <form method="post" action="{{ url_for('extract_news_route') }}">
+                        <div class="mb-3">
+                            <label for="symbol" class="form-label">Enter Stock Symbol:</label>
+                            <input type="text" id="symbol" name="symbol" class="form-control" placeholder="e.g. OMSE" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Get News & Sentiment</button>
+                    </form>
+                </div>
+
+                <!-- Display gauge, word cloud, and news data -->
+                {% if news_ticker %}
+                <div class="result-container mt-4">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card">
+                                    <h2 class="card-title">Sentiment Gauge for {{ news_ticker|upper }}</h2>
+                                    <div>
+                                        {{ news_gauge_html|safe }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h2 class="card-title">Word Cloud for {{ news_ticker|upper }}</h2>
+                                    {% if news_wordcloud_base64 %}
+                                    <img src="data:image/png;base64,{{ news_wordcloud_base64 }}" class="img-fluid" alt="Word Cloud">
+                                    {% else %}
+                                    <p>No word cloud available for this ticker.</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- News Section -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h2 class="card-title">Recent News for {{ news_ticker|upper }}</h2>
+                                    {% if news_headline and news_link %}
+                                        <a href="{{ news_link }}" target="_blank" rel="noopener noreferrer">{{ news_headline }}</a>
+                                        
+                                        {% if news_text %}
+                                        <div class="mt-3 news-content">
+                                            <p>{{ news_text }}</p>
+                                        </div>
+                                        {% endif %}
+                                    {% else %}
+                                        <p class="card-text">No recent news available for this ticker.</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Newsletter Section -->
+            <div id="newsletter-section" class="section">
+                <h1 class="section-title">Newsletter</h1>
+                <p class="section-subtitle">Sign up for our newsletter to receive market insights.</p>
+                
+                <div class="card">
+                    <form>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" id="email" class="form-control" placeholder="Enter your email address" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="interests" class="form-label">Areas of Interest</label>
+                            <select id="interests" class="form-control">
+                                <option>Technology Stocks</option>
+                                <option>Financial Markets</option>
+                                <option>Commodities</option>
+                                <option>Cryptocurrencies</option>
+                                <option>All of the above</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Subscribe</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Include Bootstrap JS and dependencies -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <script>
+        // Wait for the DOM to be fully loaded before executing scripts
+        document.addEventListener('DOMContentLoaded', function() {
+            // ---- INITIALIZATION ----
+            
+            // Helper function for formatting dates consistently
+            function formatDate(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+            
+            // Set today's date for various date fields
+            const today = new Date();
+            const todayFormatted = formatDate(today);
+            
+            // Set default end date where applicable
+            if (document.getElementById('end_date')) {
+                document.getElementById('end_date').value = todayFormatted;
+            }
+            
+            // Set default dates for stock chart
+            if (document.getElementById('date_from') && document.getElementById('date_to')) {
+                const lastMonth = new Date();
+                lastMonth.setMonth(today.getMonth() - 1);
+                const lastMonthFormatted = formatDate(lastMonth);
+                
+                document.getElementById('date_from').value = lastMonthFormatted;
+                document.getElementById('date_to').value = todayFormatted;
+            }
+            
+            // ---- SECTION NAVIGATION ----
+            
+            // Check for active section in localStorage
+            const activeSection = localStorage.getItem('activeSection');
+            if (activeSection) {
+                showSection(activeSection);
+            } else {
+                // Default section logic - adjust this based on your application's needs
+                if (typeof ticker !== 'undefined' && ticker) {
+                    showSection('company-sentiment-section');
+                } else {
+                    showSection('home-section');
+                }
+            }
+            
+            // Set up iframe load events
+            const iframes = document.querySelectorAll('iframe');
+            iframes.forEach(iframe => {
+                iframe.onload = function() {
+                    this.classList.add('loaded');
+                };
+            });
+            
+            // ---- COMPANY NEWS SECTION ----
+            
+            const newsForm = document.getElementById('news-form');
+            if (newsForm) {
+                newsForm.addEventListener('submit', function(event) {
+                    event.preventDefault();
+                    
+                    const ticker = document.getElementById('ticker').value;
+                    const resultsContainer = document.getElementById('news-results-container');
+                    const errorContainer = document.getElementById('news-error-container');
+                    
+                    // Show loading indicator
+                    resultsContainer.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading news...</p></div>';
+                    
+                    // Create form data
+                    const formData = new FormData(newsForm);
+                    
+                    // Make AJAX request
+                    fetch(newsForm.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => response.text())
+                    .then(html => {
+                        // Parse the response HTML
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        
+                        // Check for errors
+                        const errorElement = doc.querySelector('#company-news-section .alert-danger');
+                        if (errorElement) {
+                            errorContainer.innerHTML = '<div class="alert alert-danger" role="alert">' + errorElement.textContent + '</div>';
+                            resultsContainer.innerHTML = '';
+                        } else {
+                            errorContainer.innerHTML = '';
+                            // Extract the news results from the response
+                            const newsResults = doc.querySelector('#news-results-container');
+                            if (newsResults) {
+                                resultsContainer.innerHTML = newsResults.innerHTML;
+                            } else {
+                                resultsContainer.innerHTML = '<div class="alert alert-info" role="alert">No news results found</div>';
+                            }
+                        }
+        
+                        // Save to localStorage for persistence
+                        localStorage.setItem('newsTicker', ticker);
+                        localStorage.setItem('newsResults', resultsContainer.innerHTML);
+                        
+                        // Make sure we stay on the company news section
+                        showSection('company-news-section');
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        errorContainer.innerHTML = '<div class="alert alert-danger" role="alert">Error loading news: ' + error.message + '</div>';
+                        resultsContainer.innerHTML = '';
+                    });
+                });
+                
+                // Load saved news results if available
+                const savedTicker = localStorage.getItem('newsTicker');
+                const savedNewsResults = localStorage.getItem('newsResults');
+                
+                if (savedTicker && savedNewsResults) {
+                    document.getElementById('ticker').value = savedTicker;
+                    document.getElementById('news-results-container').innerHTML = savedNewsResults;
+                }
+            }
+            
+            // ---- STOCK CHART SECTION ----
+            
+            // Set today's date for the stock chart end date
+            if (document.getElementById('date_to')) {
+                document.getElementById('date_to').value = todayFormatted;
+            }
+            
+            // Load cached chart if in the chart section
+            if (document.getElementById('stock-chart-section') && 
+                document.getElementById('stock-chart-section').classList.contains('active')) {
+                loadCachedChart();
+            }
+            
+            // Set up chart form submission
+            const chartForm = document.getElementById('chart-form');
+            if (chartForm) {
+                chartForm.addEventListener('submit', generateStockChart);
+            }
+            
+            // Force redraw of Plotly elements if present
+            if (window.Plotly) {
+                const plots = document.querySelectorAll('.js-plotly-plot');
+                plots.forEach(function(plot) {
+                    window.Plotly.relayout(plot, {});
+                });
+            }
+            
+            // Company Sentiment Form
+            const companySentimentForm = document.querySelector('#company-sentiment-section form');
+            if (companySentimentForm) {
+                companySentimentForm.addEventListener('submit', function() {
+                    // Save the ticker value when form is submitted
+                    const ticker = document.querySelector('#sentiment-ticker').value;
+                    if (ticker) {
+                        localStorage.setItem('companySentimentTicker', ticker);
+                        localStorage.setItem('lastSentimentSection', 'company');
+                    }
+                });
+            }
+        
+            // News Sentiment Form
+            const newsSentimentForm = document.querySelector('#news-sentiment-section form');
+            if (newsSentimentForm) {
+                newsSentimentForm.addEventListener('submit', function() {
+                    // Save the ticker value when form is submitted
+                    const ticker = document.querySelector('#symbol').value;
+                    if (ticker) {
+                        localStorage.setItem('newsSentimentTicker', ticker);
+                        localStorage.setItem('lastSentimentSection', 'news');
+                    }
+                });
+            }
+            
+            // Make section navigation handle both sections separately
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', function() {
+                    const sectionId = this.getAttribute('data-section');
+                    if (sectionId === 'company-sentiment-section') {
+                        // Load company sentiment data if available
+                        const companySectionData = localStorage.getItem('companySentimentData');
+                        if (companySectionData) {
+                            try {
+                                localStorage.setItem('lastSentimentSection', 'company');
+                            } catch (e) {
+                                console.error('Error loading company sentiment data:', e);
+                            }
+                        }
+                    } else if (sectionId === 'news-sentiment-section') {
+                        // Load news sentiment data if available
+                        const newsSectionData = localStorage.getItem('newsSentimentData');
+                        if (newsSectionData) {
+                            try {
+                                localStorage.setItem('lastSentimentSection', 'news');
+                            } catch (e) {
+                                console.error('Error loading news sentiment data:', e);
+                            }
+                        }
+                    }
+                });
+            });
+            
+            // Setup content observers and load saved data
+            setupContentObservers();
+            loadSavedSectionData();
+        });
+        
+        // ---- FUNCTIONS ----
+        
+        // Navigation function
+        function showSection(sectionId) {
+            // Save active section to localStorage for page reloads
+            localStorage.setItem('activeSection', sectionId);
+            
+            // Hide all sections with transition
+            const sections = document.querySelectorAll('.section');
+            sections.forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            // Show selected section after short delay for transition
+            setTimeout(() => {
+                const selectedSection = document.getElementById(sectionId);
+                if (selectedSection) {
+                    selectedSection.classList.add('active');
+                    
+                    // Special handling for sentiment sections
+                    if (sectionId === 'company-sentiment-section') {
+                        // Force redraw Plotly if present
+                        setTimeout(() => {
+                            if (window.Plotly) {
+                                const plots = selectedSection.querySelectorAll('.js-plotly-plot');
+                                plots.forEach(plot => {
+                                    try {
+                                        window.Plotly.relayout(plot, {});
+                                    } catch (e) {
+                                        console.warn('Error relayouting plot:', e);
+                                    }
+                                });
+                            }
+                        }, 200);
+                    } 
+                    else if (sectionId === 'news-sentiment-section') {
+                        // Force redraw Plotly if present
+                        setTimeout(() => {
+                            if (window.Plotly) {
+                                const plots = selectedSection.querySelectorAll('.js-plotly-plot');
+                                plots.forEach(plot => {
+                                    try {
+                                        window.Plotly.relayout(plot, {});
+                                    } catch (e) {
+                                        console.warn('Error relayouting plot:', e);
+                                    }
+                                });
+                            }
+                        }, 200);
+                    }
+                    else if (sectionId === 'stock-chart-section') {
+                        loadCachedChart();
+                        
+                        // Ensure end date is set to today
+                        const today = new Date();
+                        const todayFormatted = formatDate(today);
+                        if (document.getElementById('date_to')) {
+                            document.getElementById('date_to').value = todayFormatted;
+                        }
+                    }
+                }
+                
+                // Update active navigation
+                const navLinks = document.querySelectorAll('.nav-link');
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('data-section') === sectionId) {
+                        link.classList.add('active');
+                    }
+                });
+            }, 100);
+        }
+        
+        // Toggle subsections
+        function toggleSubsections(subsectionId) {
+            const subsection = document.getElementById(subsectionId);
+            if (subsection) {
+                subsection.classList.toggle('open');
+            }
+        }
+        
+        // Toggle sidebar
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('open');
+            }
+        }
+        
+        // Date range setter for news section
+        function setDateRange(range) {
+            const endDate = new Date();
+            let startDate = new Date();
+        
+            switch (range) {
+                case '1m':  // Last 1 Month
+                    startDate.setMonth(endDate.getMonth() - 1);
+                    break;
+                case '3m':  // Last 3 Months
+                    startDate.setMonth(endDate.getMonth() - 3);
+                    break;
+                case '6m':  // Last 6 Months
+                    startDate.setMonth(endDate.getMonth() - 6);
+                    break;
+                case '1y':  // Last 1 Year 
+                    startDate.setFullYear(endDate.getFullYear() - 1);
+                    break;
+                case 'ytd':  // Year to Date (YTD)
+                    // Set to January 1st of the current year
+                    startDate = new Date(endDate.getFullYear(), 0, 1);
+                    break;
+            }
+        
+            // Format dates using our helper function
+            const startFormatted = formatDate(startDate);
+            const endFormatted = formatDate(endDate);
+        
+            // Set the date values in the input fields
+            if (document.getElementById('start_date') && document.getElementById('end_date')) {
+                document.getElementById('start_date').value = startFormatted;
+                document.getElementById('end_date').value = endFormatted;
+            }
+        }
+        
+        // Date range setter for stock chart
+        function setStockChartDateRange(range) {
+            const endDate = new Date();
+            let startDate = new Date();
+        
+            switch (range) {
+                case '1m':  // Last 1 Month
+                    startDate.setMonth(endDate.getMonth() - 1);
+                    break;
+                case '3m':  // Last 3 Months
+                    startDate.setMonth(endDate.getMonth() - 3);
+                    break;
+                case '6m':  // Last 6 Months
+                    startDate.setMonth(endDate.getMonth() - 6);
+                    break;
+                case '1y':  // Last 1 Year 
+                    startDate.setFullYear(endDate.getFullYear() - 1);
+                    break;
+                case 'ytd':  // Year to Date (YTD)
+                    // Set to January 1st of the current year
+                    startDate = new Date(endDate.getFullYear(), 0, 1);
+                    break;
+            }
+        
+            // Format dates using our helper function
+            const startFormatted = formatDate(startDate);
+            const endFormatted = formatDate(endDate);
+        
+            // Set the date values in the input fields
+            if (document.getElementById('date_from') && document.getElementById('date_to')) {
+                document.getElementById('date_from').value = startFormatted;
+                document.getElementById('date_to').value = endFormatted;
+            }
+        }
+        
+        // Helper function to format date as YYYY-MM-DD
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // Generate stock chart
+        function generateStockChart(event) {
+            event.preventDefault();
+            
+            // Always update end date to today before generating chart
+            const today = new Date();
+            const todayFormatted = formatDate(today);
+            if (document.getElementById('date_to')) {
+                document.getElementById('date_to').value = todayFormatted;
+            }
+            
+            // Get form values
+            const ticker = document.getElementById('chart-ticker').value;
+            const dateFrom = document.getElementById('date_from').value;
+            const dateTo = document.getElementById('date_to').value;
+            const chartContainer = document.getElementById('chart-container');
+            
+            if (!chartContainer) {
+                console.error('Chart container not found');
+                return false;
+            }
+            
+            // Show loading indicator
+            chartContainer.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Generating chart for ' + ticker + '...</p></div>';
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('ticker', ticker);
+            formData.append('date_from', dateFrom);
+            formData.append('date_to', dateTo);
+            
+            console.log('Requesting chart generation for:', ticker, dateFrom, dateTo);
+            
+            // Make AJAX request
+            fetch('/stockchart', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                console.log('Server response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Server response data:', data);
+                
+                if (data.success) {
+                    // Get the chart filename from response
+                    const chartFilename = data.chart_filename;
+                    const timestamp = new Date().getTime(); // Add timestamp to prevent caching
+                    const iframeSrc = `/static/${chartFilename}?t=${timestamp}`;
+                    
+                    console.log('Loading chart from:', iframeSrc);
+                    
+                    // Create and add iframe
+                    chartContainer.innerHTML = '';
+                    const iframe = document.createElement('iframe');
+                    iframe.src = iframeSrc;
+                    iframe.style.width = '100%';
+                    iframe.style.height = '500px';
+                    iframe.style.border = 'none';
+                    iframe.style.overflow = 'hidden';
+                    
+                    // Debug iframe loading
+                    iframe.onload = function() {
+                        console.log('Chart iframe loaded successfully');
+                    };
+                    
+                    iframe.onerror = function(e) {
+                        console.error('Chart iframe failed to load:', e);
+                        chartContainer.innerHTML = '<div class="alert alert-warning my-3">Chart failed to load. Please try again.</div>';
+                    };
+                    
+                    chartContainer.appendChild(iframe);
+                    
+                    // Add a direct link below as backup
+                    const directLink = document.createElement('div');
+                    directLink.className = 'mt-2 text-center';
+                    directLink.innerHTML = '<a href="' + iframeSrc + '" target="_blank" class="btn btn-sm btn-outline-primary">Open chart in new window</a>';
+                    chartContainer.appendChild(directLink);
+                    
+                    // Cache the chart data
+                    const chartData = {
+                        ticker: ticker,
+                        dateFrom: dateFrom,
+                        dateTo: dateTo,
+                        iframeSrc: iframeSrc
+                    };
+                    localStorage.setItem('chartData', JSON.stringify(chartData));
+                    
+                } else {
+                    throw new Error(data.error || 'Unknown error occurred');
+                }
+            })
+            .catch(error => {
+                console.error('Error generating chart:', error);
+                chartContainer.innerHTML = '<div class="alert alert-danger my-3">Error generating chart: ' + error.message + '</div>';
+            });
+            
+            return false;
+        }
+        
+        // Load cached chart data
+        function loadCachedChart() {
+            const cachedChartData = localStorage.getItem('chartData');
+            if (cachedChartData) {
+                try {
+                    const chartData = JSON.parse(cachedChartData);
+                    
+                    // Set form values if elements exist
+                    if (document.getElementById('chart-ticker')) {
+                        document.getElementById('chart-ticker').value = chartData.ticker;
+                    }
+                    if (document.getElementById('date_from')) {
+                        document.getElementById('date_from').value = chartData.dateFrom;
+                    }
+                    
+                    // Always set end date to today's date for stock chart
+                    const today = new Date();
+                    const todayFormatted = formatDate(today);
+                    if (document.getElementById('date_to')) {
+                        document.getElementById('date_to').value = todayFormatted;
+                    }
+                    
+                    // Only render chart if we're in the chart section
+                    const chartSection = document.getElementById('stock-chart-section');
+                    const chartContainer = document.getElementById('chart-container');
+                    
+                    if (chartSection && chartContainer && chartSection.classList.contains('active')) {
+                        console.log('Loading cached chart:', chartData.iframeSrc);
+                        
+                        chartContainer.innerHTML = '';
+                        const iframe = document.createElement('iframe');
+                        iframe.src = chartData.iframeSrc;
+                        iframe.style.width = '100%';
+                        iframe.style.height = '500px';
+                        iframe.style.border = 'none';
+                        iframe.style.overflow = 'hidden';
+                        
+                        // Add event listener to check if iframe loaded successfully
+                        iframe.onload = function() {
+                            console.log('Cached chart loaded successfully');
+                        };
+                        
+                        iframe.onerror = function() {
+                            console.error('Cached chart failed to load');
+                            chartContainer.innerHTML = '<div class="alert alert-warning my-3">Cached chart could not be loaded. Please generate a new chart.</div>';
+                        };
+                        
+                        chartContainer.appendChild(iframe);
+                        
+                        // Add a direct link as backup
+                        const directLink = document.createElement('div');
+                        directLink.className = 'mt-2 text-center';
+                        directLink.innerHTML = '<a href="' + chartData.iframeSrc + '" target="_blank" class="btn btn-sm btn-outline-primary">Open chart in new window</a>';
+                        chartContainer.appendChild(directLink);
+                    }
+                } catch (error) {
+                    console.error('Error loading cached chart:', error);
+                    // Clear invalid cache data
+                    localStorage.removeItem('chartData');
+                }
+            }
+        }
+        
+        // Set up observers to save section content
+        function setupContentObservers() {
+            // For Company Sentiment Section - observe the entire section for changes
+            const companySection = document.querySelector('#company-sentiment-section');
+            if (companySection) {
+                // Get all key elements to observe
+                const resultContainer = companySection.querySelector('.result-container');
+                
+                if (resultContainer) {
+                    const observer = new MutationObserver(function() {
+                        // Save the ticker 
+                        const ticker = document.querySelector('#company-sentiment-section #sentiment-ticker')?.value;
+                        if (ticker) {
+                            localStorage.setItem('companySentimentTicker', ticker);
+                        }
+                        
+                        // Save the gauge HTML if it exists
+                        const gaugeElement = companySection.querySelector('.js-plotly-plot');
+                        if (gaugeElement) {
+                            localStorage.setItem('companyGaugeHTML', gaugeElement.outerHTML);
+                        }
+                        
+                        // Save the word cloud if it exists
+                        const wordCloudElement = companySection.querySelector('img.img-fluid[src^="data:image/png;base64"]');
+                        if (wordCloudElement) {
+                            localStorage.setItem('companyWordCloudSrc', wordCloudElement.src);
+                        }
+                        
+                        // Save the entire results container
+                        localStorage.setItem('companySentimentResults', resultContainer.innerHTML);
+                    });
+                    
+                    observer.observe(resultContainer, { 
+                        childList: true, 
+                        subtree: true,
+                        characterData: true,
+                        attributes: true
+                    });
+                }
+            }
+            
+            // For News Sentiment Section - similar approach
+            const newsSection = document.querySelector('#news-sentiment-section');
+            if (newsSection) {
+                // Get all key elements to observe
+                const resultContainer = newsSection.querySelector('.result-container');
+                
+                if (resultContainer) {
+                    const observer = new MutationObserver(function() {
+                        // Save the ticker
+                        const ticker = document.querySelector('#news-sentiment-section #symbol')?.value;
+                        if (ticker) {
+                            localStorage.setItem('newsSentimentTicker', ticker);
+                        }
+                        
+                        // Save the gauge HTML if it exists
+                        const gaugeElement = newsSection.querySelector('.js-plotly-plot');
+                        if (gaugeElement) {
+                            localStorage.setItem('newsGaugeHTML', gaugeElement.outerHTML);
+                        }
+                        
+                        // Save the word cloud if it exists
+                        const wordCloudElement = newsSection.querySelector('img.img-fluid[src^="data:image/png;base64"]');
+                        if (wordCloudElement) {
+                            localStorage.setItem('newsWordCloudSrc', wordCloudElement.src);
+                        }
+                        
+                        // Save the entire results container
+                        localStorage.setItem('newsSentimentResults', resultContainer.innerHTML);
+                        
+                        // Save news text if available
+                        const newsText = newsSection.querySelector('.news-content p')?.textContent;
+                        if (newsText) {
+                            localStorage.setItem('newsSentimentText', newsText);
+                        }
+                    });
+                    
+                    observer.observe(resultContainer, { 
+                        childList: true, 
+                        subtree: true,
+                        characterData: true,
+                        attributes: true
+                    });
+                }
+            }
+        }
+        
+        // Load saved section data
+        function loadSavedSectionData() {
+            // Load Company Sentiment Section data
+            const companySentimentTicker = localStorage.getItem('companySentimentTicker');
+            const companySentimentResults = localStorage.getItem('companySentimentResults');
+            
+            if (companySentimentTicker && companySentimentResults) {
+                // Set ticker value
+                const tickerInput = document.querySelector('#company-sentiment-section #sentiment-ticker');
+                if (tickerInput) {
+                    tickerInput.value = companySentimentTicker;
+                }
+                
+                // Restore the entire result container
+                const resultContainer = document.querySelector('#company-sentiment-section .result-container');
+                if (resultContainer) {
+                    resultContainer.innerHTML = companySentimentResults;
+                    
+                    // Force redraw of Plotly gauge
+                    setTimeout(() => {
+                        if (window.Plotly) {
+                            const plots = resultContainer.querySelectorAll('.js-plotly-plot');
+                            plots.forEach(function(plot) {
+                                try {
+                                    window.Plotly.relayout(plot, {});
+                                } catch (e) {
+                                    console.warn('Error relayouting plot:', e);
+                                }
+                            });
+                        }
+                    }, 200);
+                }
+            }
+            
+            // Load News Sentiment Section data
+            const newsSentimentTicker = localStorage.getItem('newsSentimentTicker');
+            const newsSentimentResults = localStorage.getItem('newsSentimentResults');
+            
+            if (newsSentimentTicker && newsSentimentResults) {
+                // Set ticker value
+                const tickerInput = document.querySelector('#news-sentiment-section #symbol');
+                if (tickerInput) {
+                    tickerInput.value = newsSentimentTicker;
+                }
+                
+                // Restore the entire result container
+                const resultContainer = document.querySelector('#news-sentiment-section .result-container');
+                if (resultContainer) {
+                    resultContainer.innerHTML = newsSentimentResults;
+                    
+                    // Force redraw of Plotly gauge
+                    setTimeout(() => {
+                        if (window.Plotly) {
+                            const plots = resultContainer.querySelectorAll('.js-plotly-plot');
+                            plots.forEach(function(plot) {
+                                try {
+                                    window.Plotly.relayout(plot, {});
+                                } catch (e) {
+                                    console.warn('Error relayouting plot:', e);
+                                }
+                            });
+                        }
+                    }, 200);
+                }
+            }
+        }
+        
+        // Save important data before page unload
+        window.addEventListener('beforeunload', function() {
+            // Save news section data
+            const ticker = document.getElementById('ticker');
+            const resultsContainer = document.getElementById('news-results-container');
+            
+            if (ticker && resultsContainer) {
+                const tickerValue = ticker.value;
+                const results = resultsContainer.innerHTML;
+                
+                if (tickerValue && results) {
+                    localStorage.setItem('newsTicker', tickerValue);
+                    localStorage.setItem('newsResults', results);
+                }
+            }
+            
+            // Save company section state
+            const companySection = document.querySelector('#company-sentiment-section');
+            if (companySection) {
+                const companyGauge = companySection.querySelector('.js-plotly-plot');
+                const companyWordCloud = companySection.querySelector('img.img-fluid[src^="data:image/png;base64"]');
+                
+                if (companyGauge) {
+                    localStorage.setItem('companyGaugeHTML', companyGauge.outerHTML);
+                }
+                
+                if (companyWordCloud) {
+                    localStorage.setItem('companyWordCloudSrc', companyWordCloud.src);
+                }
+            }
+            
+            // Save news sentiment section state
+            const newsSection = document.querySelector('#news-sentiment-section');
+            if (newsSection) {
+                const newsGauge = newsSection.querySelector('.js-plotly-plot');
+                const newsWordCloud = newsSection.querySelector('img.img-fluid[src^="data:image/png;base64"]');
+                
+                if (newsGauge) {
+                    localStorage.setItem('newsGaugeHTML', newsGauge.outerHTML);
+                }
+                
+                if (newsWordCloud) {
+                    localStorage.setItem('newsWordCloudSrc', newsWordCloud.src);
+                }
+            }
+            
+            // Save active section
+            const activeSection = document.querySelector('.section.active');
+            if (activeSection) {
+                localStorage.setItem('activeSection', activeSection.id);
+            }
+        });
+        
+        // Add load event to ensure everything is loaded properly
+        window.addEventListener('load', function() {
+            // Force redraw of Plotly elements if present
+            if (window.Plotly) {
+                const plots = document.querySelectorAll('.js-plotly-plot');
+                plots.forEach(function(plot) {
+                    try {
+                        window.Plotly.relayout(plot, {});
+                    } catch (e) {
+                        console.warn('Error relayouting plot:', e);
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
