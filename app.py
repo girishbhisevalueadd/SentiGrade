@@ -4,7 +4,19 @@ import logging
 import time
 import uuid
 from logging.handlers import RotatingFileHandler
-from market_sentiment import analyze_sentiment, create_stock_chart, get_recent_news, news_sentiment, extract_news, generate_sentiment_visuals
+
+# Load .env (ANTHROPIC_API_KEY, etc.) before importing market_sentiment so the
+# Claude SDK sees the key when called.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+from market_sentiment import (
+    analyze_sentiment, create_stock_chart, get_recent_news, news_sentiment,
+    extract_news, generate_sentiment_visuals, generate_one_page_report_visuals,
+)
 
 app = Flask(__name__)
 app.static_folder = 'static'
@@ -246,6 +258,82 @@ def stockchart():
             return jsonify({'success': False, 'error': str(e)}), 500
 
     return render_template('index.html')
+
+
+@app.route('/one_page_report', methods=['POST'])
+def one_page_report():
+    """One-Page-Report: stock chart + Claude-scored sentiment gauge + impactful-words
+    word cloud, all driven by the same ticker + date range.
+    """
+    rid = getattr(request, 'req_id', '--------')
+    ticker = (request.form.get('ticker') or '').strip().upper()
+    date_from = request.form.get('date_from')
+    date_to = request.form.get('date_to')
+
+    logger.info("[%s] /one_page_report ticker=%r range=%s..%s",
+                rid, ticker, date_from, date_to)
+
+    if not ticker or not date_from or not date_to:
+        return render_template('index.html',
+                              report_active=True,
+                              report_error='Ticker, start date, and end date are all required.')
+
+    # --- 1) Stock chart ---------------------------------------------------
+    clean_ticker = ''.join(c for c in ticker if c.isalnum())
+    chart_filename = f"OPR_{clean_ticker}_{date_from}_{date_to}.html"
+    chart_path = os.path.join(app.static_folder, chart_filename)
+    chart_error = None
+    try:
+        success = create_stock_chart(ticker, date_from, date_to, chart_path)
+        if not success or not os.path.exists(chart_path):
+            chart_error = 'Chart generation failed silently.'
+            chart_filename = None
+    except Exception as e:
+        logger.exception("[%s] one-page-report chart failed", rid)
+        chart_error = str(e)
+        chart_filename = None
+
+    # --- 2) Sentiment gauge + impactful word cloud ------------------------
+    gauge_html = None
+    wordcloud_base64 = None
+    sentiment_score = None
+    sentiment_error = None
+    news_count = 0
+    csv_path = TICKER_CSV_MAP.get(ticker)
+    if not csv_path or not os.path.exists(csv_path):
+        sentiment_error = (
+            f"No news data file is configured for ticker {ticker}. "
+            f"Available: {', '.join(sorted(TICKER_CSV_MAP))}."
+        )
+    else:
+        try:
+            gauge_html, wordcloud_base64, sentiment_score, news_count = (
+                generate_one_page_report_visuals(ticker, csv_path, date_from, date_to)
+            )
+            logger.info("[%s] sentiment OK ticker=%s score=%.3f news=%d",
+                        rid, ticker, sentiment_score, news_count)
+        except ValueError as e:
+            sentiment_error = str(e)
+            logger.warning("[%s] sentiment ValueError: %s", rid, e)
+        except Exception as e:
+            logger.exception("[%s] sentiment failed", rid)
+            sentiment_error = str(e)
+
+    return render_template(
+        'index.html',
+        report_active=True,
+        report_ticker=ticker,
+        report_date_from=date_from,
+        report_date_to=date_to,
+        report_chart_filename=chart_filename,
+        report_chart_error=chart_error,
+        report_gauge_html=gauge_html,
+        report_wordcloud_base64=wordcloud_base64,
+        report_score=sentiment_score,
+        report_news_count=news_count,
+        report_sentiment_error=sentiment_error,
+    )
+
 
 @app.route('/recent_news', methods=['POST'])
 def recent_news():

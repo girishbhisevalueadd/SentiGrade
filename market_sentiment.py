@@ -476,105 +476,57 @@ def create_sentiment_gauge(ticker, gauge_value):
     Returns:
         str: HTML for the gauge
     """
-    print(f"🔍 DEBUG: Starting gauge generation for {ticker} with value {gauge_value}")
-    
+    logger.debug("gauge: starting generation ticker=%s value=%s", ticker, gauge_value)
+
     try:
         # Validate gauge value
         if gauge_value is None:
             gauge_value = 50  # Default to neutral
-            
+
         # Ensure gauge value is within range
         gauge_value = max(0, min(100, gauge_value))
-        
+
         # Create a unique ID for this gauge
         gauge_id = f"gauge-{ticker.lower()}-{int(time.time())}"
-        print(f"🔍 DEBUG: Created unique gauge ID: {gauge_id}")
-        
-        # Create the gauge figure
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=gauge_value,
-            title={'text': f"Sentiment Gauge for {ticker.upper()} out of 100"},
-            gauge={
-                'shape': "angular",
-                'axis': {'range': [None, 100]},
-                'steps': [
-                    {'range': [0, 30], 'color': "red"},
-                    {'range': [30, 70], 'color': "yellow"},
-                    {'range': [70, 100], 'color': "green"}
-                ],
-                'threshold': {
-                    'line': {'color': "black", 'width': 4},
-                    'thickness': 0.75,
-                    'value': gauge_value
-                }
-            },
-            domain={'x': [0, 1], 'y': [0, 1]}
-        ))
-        
-        # Set figure layout
-        fig.update_layout(
-            autosize=True,
-            height=300,
-            margin=dict(l=20, r=20, t=30, b=20),
-            paper_bgcolor="white",
-            font=dict(size=12)
-        )
-        
-        # Instead of using Plotly's to_html method, create a direct implementation
-        # that doesn't rely on the CDN version of Plotly
+        logger.debug("gauge: gauge_id=%s", gauge_id)
+
+        # Render a single Plotly gauge into a self-sizing container. The earlier
+        # version emitted a CSS-bar fallback above the gauge and stacked them in a
+        # fixed-height box, which made the gauge overflow its card; it also embedded
+        # a literal "</script>" substring inside a JS comment, which prematurely
+        # terminated the <script> element and leaked the trailing JS as visible text.
+        # Both issues are fixed here.
+        fn_name = "createGauge_" + gauge_id.replace('-', '_')
         wrapped_html = f'''
-        <div id="{gauge_id}-container" class="gauge-container" style="min-height:300px; height:300px; width:100%; position:relative;">
-            <!-- Simple fallback visualization -->
-            <div style="text-align:center; padding:20px;">
-                <h3>Sentiment Score: {gauge_value}/100</h3>
-                <div style="width:80%; height:30px; background:#eee; margin:20px auto; border-radius:15px;">
-                    <div style="width:{gauge_value}%; height:100%; background-color:{
-                        '#ff6666' if gauge_value < 30 else 
-                        '#ffff66' if gauge_value <= 70 else 
-                        '#66ff66'
-                    };"></div>
-                </div>
-                <div style="font-size:20px; font-weight:bold; margin-top:10px;">
-                    {gauge_value}/100 - {
-                        'Negative' if gauge_value < 30 else
-                        'Neutral' if gauge_value <= 70 else
-                        'Positive'
-                    }
-                </div>
+        <div id="{gauge_id}-container" class="gauge-container" style="width:100%; min-height:280px; position:relative;">
+            <div id="{gauge_id}" style="width:100%; height:280px;"></div>
+            <div id="{gauge_id}-fallback" style="display:none; text-align:center; padding:20px; color:#a00;">
+                Plotly library not loaded — cannot render gauge.
             </div>
-            
-            <!-- Plotly will render here if available -->
-            <div id="{gauge_id}" style="width:100%; height:300px;"></div>
-            
-            <!-- Inline script to create the Plotly gauge -->
             <script>
-                // Create a function that will be called when the page loads
-                function createGauge_{gauge_id.replace('-', '_')}() {{
-                    console.log("Creating gauge with ID: {gauge_id}");
-                    
-                    // Check if Plotly is available
-                    if (typeof Plotly === 'undefined') {{
-                        console.error("Plotly is not available for gauge {gauge_id}");
-                        document.getElementById('{gauge_id}-container').innerHTML += 
-                            '<div style="color:red; text-align:center;">Plotly library not loaded</div>';
-                        return;
-                    }}
-                    
-                    try {{
-                        // Create the data for Plotly
+                (function() {{
+                    function {fn_name}() {{
+                        if (typeof Plotly === 'undefined') {{
+                            var f = document.getElementById('{gauge_id}-fallback');
+                            if (f) f.style.display = 'block';
+                            return;
+                        }}
+                        // No in-gauge "title" — the surrounding card already shows
+                        // "Sentiment Gauge for <ticker>" as an h2; an internal title
+                        // shifts Plotly's value text off-center to make room for it.
                         var data = [{{
                             type: "indicator",
                             mode: "gauge+number",
                             value: {gauge_value},
-                            title: {{ text: "Sentiment Gauge for {ticker.upper()} out of 100" }},
+                            number: {{ font: {{ size: 40 }}, valueformat: "d" }},
                             gauge: {{
                                 shape: "angular",
-                                axis: {{ range: [null, 100] }},
+                                axis: {{ range: [0, 100], tickwidth: 1, tickcolor: "#444" }},
+                                bar: {{ color: "#333" }},
                                 steps: [
-                                    {{ range: [0, 30], color: "red" }},
-                                    {{ range: [30, 70], color: "yellow" }},
-                                    {{ range: [70, 100], color: "green" }}
+                                    {{ range: [0, 30], color: "#ff6b6b" }},
+                                    {{ range: [30, 70], color: "#ffe066" }},
+                                    {{ range: [70, 100], color: "#69db7c" }}
                                 ],
                                 threshold: {{
                                     line: {{ color: "black", width: 4 }},
@@ -584,59 +536,42 @@ def create_sentiment_gauge(ticker, gauge_value):
                             }},
                             domain: {{ x: [0, 1], y: [0, 1] }}
                         }}];
-                        
-                        // Create the layout
                         var layout = {{
                             autosize: true,
-                            height: 300,
-                            margin: {{ l: 20, r: 20, t: 30, b: 20 }},
+                            height: 280,
+                            margin: {{ l: 30, r: 30, t: 20, b: 20 }},
                             paper_bgcolor: "white",
                             font: {{ size: 12 }}
                         }};
-                        
-                        // Render the plot
-                        Plotly.newPlot('{gauge_id}', data, layout, {{
-                            displayModeBar: false,
-                            responsive: true
-                        }});
-                        
-                        console.log("Gauge {gauge_id} created successfully");
-                    }} catch (e) {{
-                        console.error("Error creating gauge {gauge_id}:", e);
-                        document.getElementById('{gauge_id}-container').innerHTML += 
-                            '<div style="color:red; text-align:center;">Error creating gauge: ' + e.message + '</div>';
-                    }}
-                }}
-                
-                // Wait for DOM to be fully loaded
-                if (document.readyState === 'loading') {{
-                    document.addEventListener('DOMContentLoaded', createGauge_{gauge_id.replace('-', '_')});
-                }} else {{
-                    // DOM already loaded, create gauge immediately
-                    createGauge_{gauge_id.replace('-', '_')}();
-                }}
-                // ADD THIS CODE before the closing </script> tag:
-                window.addEventListener('load', function() {{
-                    if (typeof Plotly !== 'undefined') {{
                         try {{
-                            Plotly.relayout('{gauge_id}', {{}});
-                            console.log("Redrawn gauge on window load");
+                            Plotly.newPlot('{gauge_id}', data, layout, {{
+                                displayModeBar: false,
+                                responsive: true
+                            }});
                         }} catch (e) {{
-                            console.warn("Error redrawing gauge on window load:", e);
+                            console.error('Error creating gauge {gauge_id}:', e);
                         }}
                     }}
-                }});
+                    if (document.readyState === 'loading') {{
+                        document.addEventListener('DOMContentLoaded', {fn_name});
+                    }} else {{
+                        {fn_name}();
+                    }}
+                    window.addEventListener('load', function() {{
+                        if (typeof Plotly !== 'undefined') {{
+                            try {{ Plotly.relayout('{gauge_id}', {{}}); }} catch (e) {{}}
+                        }}
+                    }});
+                }})();
             </script>
         </div>
         '''
         
-        print(f"✅ Successfully generated gauge HTML for {ticker}")
+        logger.info("gauge: generated for %s value=%d", ticker, gauge_value)
         return wrapped_html
-        
-    except Exception as e:
-        print(f"❌ Error generating gauge: {str(e)}")
-        import traceback
-        traceback.print_exc()
+
+    except Exception:
+        logger.exception("gauge: generation failed for %s", ticker)
         
         # Return a fallback visualization
         return f'''
@@ -744,76 +679,234 @@ def analyze_sentiment(csv_path, ticker):
     
 
 
+# -----------------------------------------------------------------------------
+# Shared sentiment + word-cloud helpers (used by the Sentiment tab AND the new
+# One-Page-Report tab).
+# -----------------------------------------------------------------------------
+
+# Words to exclude from word clouds — generic financial filler, common verbs of
+# attribution, and the ticker universe itself. None of these tell the reader
+# anything about *what* the news said; keeping them just adds noise.
+_KNOWN_TICKERS = {'AAPL', 'AMD', 'EBAY', 'HPQ', 'IBM', 'JNPR', 'MSFT', 'QCOM'}
+_FINANCIAL_FILLER = {
+    # generic finance/business words that carry no sentiment
+    "stock", "stocks", "share", "shares", "shareholder", "shareholders",
+    "company", "companies", "corp", "corporation", "inc", "ltd",
+    "market", "markets", "price", "prices", "trading", "trade", "trader",
+    "investor", "investors", "investment", "investments",
+    "quarter", "quarterly", "year", "yearly", "annual", "fiscal",
+    "earnings", "revenue", "revenues",  # neutral magnitudes
+    "report", "reported", "reports", "reporting",
+    "said", "says", "according", "stated", "told", "noted",
+    "ceo", "cfo", "executive", "executives",
+    "billion", "million", "thousand", "percent", "percentage",
+    "today", "yesterday", "tomorrow", "week", "weeks", "month", "months",
+    "monday", "tuesday", "wednesday", "thursday", "friday",
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+    "yahoo", "finance", "news", "nasdaq", "nyse",
+}
+
+
+def _build_impactful_wordcloud_base64(news_text: str, ticker: str) -> str:
+    """Build a word-cloud image (base64 PNG) keeping only impactful, sentiment-bearing
+    words. Stopwords, ticker symbols, generic financial filler, and short tokens are
+    removed; the remaining words are preferentially restricted to VADER's sentiment
+    lexicon so the cloud actually reflects emotional tone of the news.
+    Returns None if no usable words remain or rendering fails.
+    """
+    if not news_text or not news_text.strip():
+        return None
+
+    try:
+        import re
+
+        banned = (
+            combined_stopwords
+            | _FINANCIAL_FILLER
+            | {t.lower() for t in _KNOWN_TICKERS}
+            | {ticker.lower(), ticker.upper()}
+        )
+
+        tokens = re.findall(r"[a-z']{4,}", news_text.lower())
+        candidates = [w for w in tokens if w not in banned]
+
+        sentiment_words = [w for w in candidates if w in analyzer.lexicon]
+        chosen = sentiment_words if len(sentiment_words) >= 8 else candidates
+        cleaned_text = " ".join(chosen)
+        if not cleaned_text.strip():
+            logger.info("wordcloud: no impactful words remained after filtering")
+            return None
+
+        wc = WordCloud(
+            width=800, height=400,
+            background_color="white", colormap="viridis",
+            collocations=False,
+        ).generate(cleaned_text)
+
+        img_buffer = io.BytesIO()
+        plt.figure(figsize=(10, 5))
+        plt.imshow(wc, interpolation="bilinear")
+        plt.axis("off")
+        plt.tight_layout(pad=0)
+        plt.savefig(img_buffer, format="png")
+        plt.close()
+        img_buffer.seek(0)
+        return base64.b64encode(img_buffer.getvalue()).decode("utf8")
+    except Exception:
+        logger.exception("impactful wordcloud generation failed")
+        return None
+
+
+def score_news_sentiment_with_claude(news_text: str, ticker: str) -> int:
+    """Score the news text using Claude Haiku 4.5 (lowest-cost, fastest tier).
+    Returns a sentiment score as an integer in [0, 100], where 0 = very negative,
+    50 = neutral, 100 = very positive. Falls back to VADER if the API call fails
+    or no key is configured (VADER's [-1,+1] compound is mapped to [0,100]).
+    """
+    def _vader_fallback(text):
+        compound = float(analyzer.polarity_scores(text)["compound"])
+        return int(round(((compound + 1.0) / 2.0) * 100))
+
+    if not news_text or not news_text.strip():
+        return 50
+
+    # Cap input to keep cost bounded — ~40K chars is roughly 10K tokens.
+    text = news_text[:40000]
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        logger.warning("ANTHROPIC_API_KEY not set; falling back to VADER for %s", ticker)
+        return _vader_fallback(text)
+
+    try:
+        import anthropic
+    except ImportError:
+        logger.error("anthropic SDK not installed; falling back to VADER")
+        return _vader_fallback(text)
+
+    # NB: structured outputs don't support `minimum`/`maximum` on numeric types —
+    # the API rejects them with a 400. Range is conveyed in the description and
+    # the system prompt; the value is post-clamped to [0, 100] below.
+    schema = {
+        "type": "object",
+        "properties": {
+            "score": {
+                "type": "integer",
+                "description": "Sentiment score in the inclusive range 0..100. 0 = very negative for the company, 50 = neutral, 100 = very positive.",
+            },
+            "label": {
+                "type": "string",
+                "enum": ["very negative", "negative", "neutral", "positive", "very positive"],
+            },
+            "rationale": {"type": "string"},
+        },
+        "required": ["score", "label", "rationale"],
+        "additionalProperties": False,
+    }
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=512,
+            system=(
+                "You are a financial-news sentiment analyzer. Given news text about a "
+                "publicly traded company, return a single sentiment score in [0, 100] "
+                "reflecting the tone with respect to the company's prospects: 0 is very "
+                "negative for the company, 50 is neutral, 100 is very positive. "
+                "Calibrate roughly: 0-30 negative, 30-70 neutral/mixed, 70-100 positive. "
+                "Consider the aggregate tone across all snippets provided."
+            ),
+            messages=[{"role": "user", "content": f"Ticker: {ticker}\n\nNews snippets:\n{text}"}],
+            output_config={"format": {"type": "json_schema", "schema": schema}},
+        )
+        for block in response.content:
+            if block.type == "text":
+                data = json.loads(block.text)
+                raw = data.get("score", 50)
+                score = int(round(float(raw)))
+                score = max(0, min(100, score))
+                logger.info("Claude sentiment for %s: score=%d/100 label=%s",
+                            ticker, score, data.get("label"))
+                return score
+        logger.warning("Claude returned no text block for %s; falling back to VADER", ticker)
+        return _vader_fallback(text)
+    except Exception:
+        logger.exception("Claude sentiment scoring failed for %s; falling back to VADER", ticker)
+        return _vader_fallback(text)
+
+
+def generate_one_page_report_visuals(ticker, news_csv_path, date_from, date_to):
+    """Read the per-ticker news CSV, filter to [date_from, date_to], score the
+    aggregate sentiment using Claude Haiku 4.5, and build a gauge + impactful-words
+    word cloud. Returns (gauge_html, wordcloud_base64, score, news_count).
+    Raises ValueError on missing data.
+    """
+    if not os.path.exists(news_csv_path):
+        raise ValueError(f"No news data file for {ticker}")
+
+    encoding = detect_encoding(news_csv_path)
+    df = pd.read_csv(news_csv_path, encoding=encoding)
+    if 'Date' not in df.columns or 'NEWS' not in df.columns:
+        raise ValueError("News CSV is missing the Date or NEWS column.")
+
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date'])
+
+    try:
+        date_from_dt = pd.to_datetime(date_from, format='%Y-%m-%d')
+        date_to_dt = pd.to_datetime(date_to, format='%Y-%m-%d')
+    except (ValueError, TypeError):
+        date_from_dt = pd.to_datetime(date_from, dayfirst=True)
+        date_to_dt = pd.to_datetime(date_to, dayfirst=True)
+
+    mask = (df['Date'] >= date_from_dt) & (df['Date'] <= date_to_dt)
+    df_filt = df.loc[mask].copy()
+    df_filt = df_filt[df_filt['NEWS'].astype(str).str.strip().astype(bool)]
+    if df_filt.empty:
+        raise ValueError(
+            f"No news headlines for {ticker} between {date_from} and {date_to}."
+        )
+
+    combined_text = "\n".join(df_filt['NEWS'].astype(str).tolist())
+    logger.info("one-page report: ticker=%s news_rows=%d chars=%d range=%s..%s",
+                ticker, len(df_filt), len(combined_text), date_from, date_to)
+
+    # Claude returns a 0..100 score directly — feed it straight to the gauge.
+    score = score_news_sentiment_with_claude(combined_text, ticker)
+    gauge_html = create_sentiment_gauge(ticker, score)
+    wordcloud_base64 = _build_impactful_wordcloud_base64(combined_text, ticker)
+    return gauge_html, wordcloud_base64, score, len(df_filt)
+
+
 def generate_sentiment_visuals(ticker: str, news_text: str) -> Tuple[str, str]:
     """
-    Generates a sentiment gauge (Plotly) and a word cloud (base64 PNG) from the provided news text.
-    
-    Args:
-        ticker (str): The stock symbol.
-        news_text (str): The news text to analyze.
-    
-    Returns:
-        tuple: (gauge_html, wordcloud_base64)
+    Generates a sentiment gauge (Plotly) and a word cloud (base64 PNG) from the
+    provided news text. Used by the existing Sentiment tab (single-article path).
+    The word cloud now filters to impactful, sentiment-bearing words (shared
+    helper); the gauge still uses VADER here so the existing tab's behavior is
+    preserved.
     """
     try:
-        
-        # Initialize VADER sentiment analyzer
-        analyzer = SentimentIntensityAnalyzer()
-
-        # Split news_text into items (try newlines first, then by period if needed)
         news_items = [item for item in news_text.split('\n') if item.strip()]
         if not news_items:
             news_items = [item.strip() for item in news_text.split('.') if item.strip()]
 
-        # Calculate compound sentiment scores for each news item
-        compound_scores = [analyzer.polarity_scores(item)["compound"] for item in news_items if item.strip()]
-
-        # Calculate average compound score and map it to a 0-100 gauge value
+        compound_scores = [analyzer.polarity_scores(item)["compound"]
+                           for item in news_items if item.strip()]
         if compound_scores:
             avg_compound = np.mean(compound_scores)
             gauge_value = int(((avg_compound + 1) / 2) * 100)
         else:
-            gauge_value = 50  # Neutral fallback
+            gauge_value = 50
 
-        # Use the improved gauge creation function
         gauge_html = create_sentiment_gauge(ticker, gauge_value)
-        
-        # Word cloud generation with proper error handling
-        wordcloud_base64 = None
-        try:
-            # Prepare text for word cloud: remove stopwords and banned words
-            combined_stopwords = set(stopwords.words('english'))
-            banned_words = {ticker.lower(), "shares", "stocks", "company", "stock"}  # add more as needed
-
-            words = [word for word in news_text.lower().split() 
-                    if word.isalpha() and word not in combined_stopwords and word not in banned_words]
-
-            cleaned_text = " ".join(words)
-
-            if cleaned_text.strip():
-                # Generate the word cloud image
-                wc = WordCloud(width=800, height=400, background_color="white", colormap="viridis").generate(cleaned_text)
-                # Save image to an in-memory bytes buffer
-                img_buffer = io.BytesIO()
-                plt.figure(figsize=(10, 5))
-                plt.imshow(wc, interpolation="bilinear")
-                plt.axis("off")
-                plt.tight_layout(pad=0)
-                plt.savefig(img_buffer, format="png")
-                plt.close()  # free memory
-                img_buffer.seek(0)
-                # Encode image to base64 for direct embedding 
-                wordcloud_base64 = base64.b64encode(img_buffer.getvalue()).decode("utf8")
-        except Exception as e:
-            print(f"Error generating word cloud: {str(e)}")
-            # Continue without word cloud
-
+        wordcloud_base64 = _build_impactful_wordcloud_base64(news_text, ticker)
         return gauge_html, wordcloud_base64
-    
-    except Exception as e:
-        print(f"Error in generate_sentiment_visuals: {str(e)}")
-        traceback.print_exc()
-        # Return empty values that won't break the template
+
+    except Exception:
+        logger.exception("generate_sentiment_visuals failed")
         return None, None
     
     
