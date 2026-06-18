@@ -497,9 +497,14 @@ def create_sentiment_gauge(ticker, gauge_value):
         # terminated the <script> element and leaked the trailing JS as visible text.
         # Both issues are fixed here.
         fn_name = "createGauge_" + gauge_id.replace('-', '_')
+        # The inner gauge div is capped at the semicircle's natural ~2:1 footprint
+        # (480x280) and centered with `margin: 0 auto`. Without this cap Plotly
+        # fills the whole card column, the arc sits in the left half (its natural
+        # 2:1 ratio), and the value text — which Plotly places at the horizontal
+        # center of the *domain* — ends up offset to the right of the arc.
         wrapped_html = f'''
         <div id="{gauge_id}-container" class="gauge-container" style="width:100%; min-height:280px; position:relative;">
-            <div id="{gauge_id}" style="width:100%; height:280px;"></div>
+            <div id="{gauge_id}" style="width:100%; max-width:480px; height:280px; margin:0 auto;"></div>
             <div id="{gauge_id}-fallback" style="display:none; text-align:center; padding:20px; color:#a00;">
                 Plotly library not loaded — cannot render gauge.
             </div>
@@ -557,11 +562,6 @@ def create_sentiment_gauge(ticker, gauge_value):
                     }} else {{
                         {fn_name}();
                     }}
-                    window.addEventListener('load', function() {{
-                        if (typeof Plotly !== 'undefined') {{
-                            try {{ Plotly.relayout('{gauge_id}', {{}}); }} catch (e) {{}}
-                        }}
-                    }});
                 }})();
             </script>
         </div>
